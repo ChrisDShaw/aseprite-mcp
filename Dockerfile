@@ -20,7 +20,7 @@ RUN dpkg --add-architecture i386 \
 
 # Steam/Aseprite environment knobs (no secrets baked!)
 ENV STEAM_APPID=431730 \
-	STEAM_INSTALL_DIR=/opt/steamapps
+	STEAM_INSTALL_DIR=/opt/steamapps/common/Aseprite
 
 # Set the working directory
 WORKDIR /app
