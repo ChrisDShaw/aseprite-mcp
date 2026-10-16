@@ -15,6 +15,7 @@ RUN dpkg --add-architecture i386 \
 	&& echo "steam steam/question select I AGREE" | debconf-set-selections \
 	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 	   steamcmd lib32gcc-s1 ca-certificates \
+	   libxcb1 libx11-6 libxext6 libxcursor1 libxi6 libxrandr2 libgl1 libfontconfig1 \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Steam/Aseprite environment knobs (no secrets baked!)
