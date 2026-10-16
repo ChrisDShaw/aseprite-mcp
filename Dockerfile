@@ -10,7 +10,9 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
 # --- Optional Steam/Aseprite support ---
 # Install steamcmd and minimal dependencies (Ubuntu base)
 USER root
-RUN apt-get update \
+RUN dpkg --add-architecture i386 \
+	&& apt-get update \
+	&& echo "steam steam/question select I AGREE" | debconf-set-selections \
 	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 	   steamcmd lib32gcc-s1 ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
@@ -28,8 +30,9 @@ COPY . .
 # Install Python dependencies using uv
 RUN uv sync
 
-# Ensure helper scripts are executable
-RUN chmod +x scripts/*.sh || true
+# Keep shell scripts runnable when Git checks them out with CRLF line endings.
+RUN sed -i 's/\r$//' scripts/*.sh \
+	&& chmod +x scripts/*.sh
 
 # Use a wrapper entrypoint that can install Aseprite via Steam at runtime if requested
 ENTRYPOINT ["/bin/bash", "/app/scripts/docker-entrypoint.sh"]
