@@ -8,4 +8,4 @@ exec docker run --rm \
   -v /var/folders:/var/folders \
   -v "$HOME:$HOME" \
   -w "$PWD" \
-  aseprite-from-source:latest aseprite "$@"
+  aseprite-from-source:latest "$@"
