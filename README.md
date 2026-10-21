@@ -4,29 +4,69 @@ A Python MCP server that gives AI assistants full control over [Aseprite](https:
 
 **117 tools across 18 categories** — canvas, drawing, layers, animation, palettes, effects, slices, tilemaps, exports, visual-feedback/analysis tools, and a raw Lua escape hatch. The tool set is designed so an LLM has everything it needs to produce *good* pixel art, not just primitives: shading ramps with hue shifting, ordered dithering, outlines, retro palette presets with quantization, onion-skin renders, and frame diffing for animation work.
 
-## Example: a swordsman, drawn and animated by Claude
-Latest (Opus 5.5) - https://github.com/diivi/aseprite-mcp/pull/35#issuecomment-6319346621 
+## Examples
 
-Earlier Preview (Fable 5):
+### Cosy room (Opus 5.5)
 
 <table>
   <tr>
-    <td align="center"><img src="examples/swordsman/swordsman.png" width="256" alt="Pixel-art swordsman drawn by Claude Fable 5"></td>
-    <td align="center"><img src="examples/swordsman/swordsman_slash.gif" width="256" alt="4-frame sword slash animation by Claude Fable 5"></td>
+    <td align="center"><img src="examples/cosy_room/cosy_room.gif" width="512" alt="Animated isometric pixel-art bedroom at dusk with a girl doing homework and a cat asleep on the bookshelf, by Claude Opus 5.5"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Task 1</b> — <em>"Draw me a pixel art of a swordsman."</em><br>32×32 still, exported at 10×.</sub></td>
-    <td align="center"><sub><b>Task 2</b> — <em>"…a sword slash attack sequence, from windup to follow-through."</em><br>4-frame animation, exported with <code>export_tag</code>.</sub></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2"><img src="examples/swordsman/swordsman_slash_sheet.png" width="520" alt="Slash sequence spritesheet: windup, extension, swing, follow-through"></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2"><sub>The same slash as a spritesheet (<code>export_spritesheet</code>): windup → extension → swing → follow-through.</sub></td>
+    <td align="center"><sub>An isometric bedroom at dusk with a girl doing her homework, animated as a lofi-style loop.<br>128×128, 16-frame loop, exported at 4×.</sub></td>
   </tr>
 </table>
 
-Both were created end-to-end by Claude Fable 5 through this server's MCP tools — drawing, checking its own work with scaled `export_frame` previews and `render_onion_skin`, then exporting. The tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvmiranda921.github.io/notebook/2025/07/20/draw-me-a-swordsman/) by Lj Miranda, whose findings inspired this server's expanded toolset.
+### Swordsman: Fable 5 vs Opus 5.5
+
+<table>
+  <tr>
+    <th>Fable 5</th>
+    <th>Opus 5.5</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="examples/swordsman/swordsman.png" width="256" alt="Pixel-art swordsman drawn by Claude Fable 5"></td>
+    <td align="center"><img src="examples/swordsman/opus_redraw.png" width="256" alt="The same swordsman redrawn by Claude Opus 5.5"></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="examples/swordsman/swordsman_slash.gif" width="256" alt="4-frame sword slash by Claude Fable 5"></td>
+    <td align="center"><img src="examples/swordsman/opus_redraw_slash.gif" width="256" alt="8-frame sword slash by Claude Opus 5.5"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The benchmark swordsman, then a slash from windup to follow-through.<br>48×48, 4-frame slash.</sub></td>
+    <td align="center"><sub>Opus 5.5 critiqued the Fable 5 sprite and redrew it at the same size.<br>48×48, 8-frame slash.</sub></td>
+  </tr>
+</table>
+
+The Fable 5 tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvmiranda921.github.io/notebook/2025/07/20/draw-me-a-swordsman/) by Lj Miranda, whose findings inspired this server's expanded toolset.
+
+### Slime (Opus 5.5)
+
+<table>
+  <tr>
+    <td align="center"><img src="examples/slime/slime.png" width="256" alt="Pixel-art green slime drawn by Claude Opus 5.5"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>A green slime.<br>32×32 still, exported at 8×.</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="examples/slime/slime_bounce.gif" width="544" alt="The slime hopping to the right with squash and stretch, by Claude Opus 5.5"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The slime bouncing to the right with squash and stretch.<br>43-frame animation, exported at 4×.</sub></td>
+  </tr>
+</table>
+
+### Swordsman vs. slime (Opus 5.5)
+
+<table>
+  <tr>
+    <td align="center"><img src="examples/swordsman_vs_slime/swordsman_vs_slime.gif" width="400" alt="The swordsman slashes the slime, which flashes red as a -12 damage number pops out and its health bar drops, by Claude Opus 5.5"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The swordsman slashes the slime, which flashes red, loses health and pops a damage number.<br>80×58, 15 frames, exported at 5×.</sub></td>
+  </tr>
+</table>
 
 ## Related Projects
 

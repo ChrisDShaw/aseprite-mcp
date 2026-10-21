@@ -44,3 +44,9 @@ ENV/
 !examples/swordsman/swordsman.png
 !examples/swordsman/swordsman_slash.gif
 !examples/swordsman/swordsman_slash_sheet.png
+!examples/slime/slime.png
+!examples/slime/slime_bounce.gif
+!examples/swordsman/opus_redraw.png
+!examples/swordsman/opus_redraw_slash.gif
+!examples/swordsman_vs_slime/swordsman_vs_slime.gif
+!examples/cosy_room/cosy_room.gif
