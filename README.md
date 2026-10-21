@@ -5,6 +5,9 @@ A Python MCP server that gives AI assistants full control over [Aseprite](https:
 **117 tools across 18 categories** — canvas, drawing, layers, animation, palettes, effects, slices, tilemaps, exports, visual-feedback/analysis tools, and a raw Lua escape hatch. The tool set is designed so an LLM has everything it needs to produce *good* pixel art, not just primitives: shading ramps with hue shifting, ordered dithering, outlines, retro palette presets with quantization, onion-skin renders, and frame diffing for animation work.
 
 ## Example: a swordsman, drawn and animated by Claude
+Latest (Opus 5.5) - https://github.com/diivi/aseprite-mcp/pull/35#issuecomment-6319346621 
+
+Earlier Preview (Fable 5):
 
 <table>
   <tr>
@@ -24,6 +27,10 @@ A Python MCP server that gives AI assistants full control over [Aseprite](https:
 </table>
 
 Both were created end-to-end by Claude Fable 5 through this server's MCP tools — drawing, checking its own work with scaled `export_frame` previews and `render_onion_skin`, then exporting. The tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvmiranda921.github.io/notebook/2025/07/20/draw-me-a-swordsman/) by Lj Miranda, whose findings inspired this server's expanded toolset.
+
+## Related Projects
+
+[Aseprite Live](https://github.com/N7z/aseprite-live) – Watch an AI agent draw pixel art in Aseprite, live, in your browser 
 
 ## Tool Categories
 
