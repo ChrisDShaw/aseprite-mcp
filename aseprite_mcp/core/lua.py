@@ -54,6 +54,28 @@ local function find_layer(spr, name)
 end
 """
 
+# Hide every layer except `target` (and the groups holding it) so a later
+# flatten() renders that layer alone. Run it on a clone, never the original.
+# A hidden target is shown; children of a target group keep their own
+# visibility. Returns true when the target was found under `layers`.
+ISOLATE_LAYER = """
+local function isolate_layer(layers, target)
+    local found = false
+    for _, layer in ipairs(layers) do
+        if layer == target then
+            layer.isVisible = true
+            found = true
+        elseif layer.isGroup and isolate_layer(layer.layers, target) then
+            layer.isVisible = true
+            found = true
+        else
+            layer.isVisible = false
+        end
+    end
+    return found
+end
+"""
+
 # Replace a cel's image with a canvas-sized image anchored at (0,0) so
 # sprite-global coordinates can be used directly without cel offsets.
 NORMALIZE_CEL = """

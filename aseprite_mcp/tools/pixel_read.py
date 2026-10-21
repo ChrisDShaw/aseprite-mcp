@@ -2,7 +2,7 @@ import json
 import os
 from ..core.commands import AsepriteCommand, lua_escape
 from ..core.lua import FIND_LAYER
-from .analysis import _FLATTEN_FRAME
+from .analysis import _FLATTEN_FRAME, _read_pixels
 from .. import mcp
 
 
@@ -297,3 +297,80 @@ async def get_composite_rect(
     if not pixels:
         return "No pixel data returned"
     return json.dumps(pixels)
+
+
+READ_ROWS_MAX_PIXELS = 128 * 128
+
+# Legend characters for read_rows, in assignment order. "." is reserved for
+# transparent; quotes, backslash and space are left out so rows stay easy to
+# copy into a draw_rows call.
+ROW_SYMBOLS = (
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    "#$%&*+-=@^~!?:;<>/|_()[]{}"
+)
+
+
+@mcp.tool()
+async def read_rows(
+    filename: str,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    frame_index: int = 1,
+    layer_name: str = "",
+) -> str:
+    """Read a region as rows of characters plus a colour legend.
+
+    The compact way to read pixels: one string per row, one character per
+    pixel, "." for transparent. The output can be edited and passed straight
+    back to draw_rows (same rows and legend) to change a few pixels.
+
+    Args:
+        filename: Aseprite file to read
+        x: Left of the region (sprite pixels)
+        y: Top of the region (sprite pixels)
+        width: Region width
+        height: Region height (width * height at most 16384)
+        frame_index: Frame index starting at 1
+        layer_name: Read only this layer (or group); "" reads what is
+            visible, all layers composited
+
+    Returns:
+        JSON with x, y, width, height, rows and legend.
+    """
+    if not os.path.exists(filename):
+        return f"File {filename} not found"
+    if width <= 0 or height <= 0:
+        return "Width and height must be > 0"
+    if width * height > READ_ROWS_MAX_PIXELS:
+        return (f"Region is {width}x{height} = {width * height} pixels; read at most "
+                f"{READ_ROWS_MAX_PIXELS} at a time (e.g. 128x128), in parts")
+
+    result = _read_pixels(filename, frame_index, layer_name, (x, y, width, height))
+    if isinstance(result, str):
+        return result
+
+    chars: dict[tuple, str] = {}
+    rows = []
+    for pixels in result[2]:
+        row = []
+        for c in pixels:
+            if c[3] == 0:
+                row.append(".")
+                continue
+            if c not in chars:
+                if len(chars) == len(ROW_SYMBOLS):
+                    return (f"The region has more than {len(ROW_SYMBOLS)} colours; "
+                            f"read a smaller region")
+                chars[c] = ROW_SYMBOLS[len(chars)]
+            row.append(chars[c])
+        rows.append("".join(row))
+
+    legend = {
+        ch: "#%02X%02X%02X" % c[:3] + ("" if c[3] == 255 else "%02X" % c[3])
+        for c, ch in chars.items()
+    }
+    return json.dumps({"x": x, "y": y, "width": width, "height": height,
+                       "rows": rows, "legend": legend})
+

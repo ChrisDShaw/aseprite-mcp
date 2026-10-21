@@ -1119,3 +1119,273 @@ async def draw_ellipse_at(
     if success:
         return f"Ellipse drawn on '{layer_name}' frame {frame_index} in {filename}"
     return f"Failed to draw ellipse: {output}"
+
+
+def _runs(pixels: dict[tuple[int, int], tuple]) -> list[tuple[int, int, int, tuple]]:
+    """Group pixels into horizontal runs of one colour: (y, x0, x1, rgba)."""
+    runs = []
+    for (x, y) in sorted(pixels, key=lambda p: (p[1], p[0])):
+        c = pixels[(x, y)]
+        if runs and runs[-1][0] == y and runs[-1][2] == x - 1 and runs[-1][3] == c:
+            runs[-1] = (y, runs[-1][1], x, c)
+        else:
+            runs.append((y, x, x, c))
+    return runs
+
+
+def _outline_of(pixels: dict[tuple[int, int], tuple], rgba: tuple) -> dict[tuple[int, int], tuple]:
+    """1 px outline (sides only) around the opaque pixels, outside the set."""
+    edge = {}
+    for (px, py), c in pixels.items():
+        if c[3] == 0:
+            continue
+        for n in ((px - 1, py), (px + 1, py), (px, py - 1), (px, py + 1)):
+            if n not in pixels:
+                edge[n] = rgba
+    return edge
+
+
+def _paint_pixels(filename: str, layer_name: str, frame_index: int,
+                  pixels: dict[tuple[int, int], tuple], create_if_missing: bool):
+    """Put sprite-global pixels {(x, y): rgba} on a layer/frame in one run.
+
+    Pixels go out as horizontal runs of one colour; off-canvas ones are
+    dropped. Returns (success, output) from the checked Lua execution.
+    """
+    palette = list(dict.fromkeys(pixels.values()))
+    index = {c: i + 1 for i, c in enumerate(palette)}
+    palette_lua = ", ".join(f"Color({r}, {g}, {b}, {a})" for r, g, b, a in palette)
+    runs_lua = ",\n".join(f"{{{ry}, {x0}, {x1}, {index[c]}}}" for ry, x0, x1, c in _runs(pixels))
+
+    safe_layer_name = lua_escape(layer_name)
+    create_flag = "true" if create_if_missing else "false"
+    script = f"""
+    {NORMALIZE_CEL}
+    {PSET}
+    {FIND_LAYER}
+    local spr = app.activeSprite
+    if not spr then print("ERROR:No active sprite") return end
+
+    local idx = {frame_index}
+    if idx < 1 or idx > #spr.frames then print("ERROR:Frame index out of range") return end
+
+    local target = find_layer(spr, "{safe_layer_name}")
+    if not target then print("ERROR:Layer not found") return end
+
+    local palette = {{ {palette_lua} }}
+    -- {{y, x_first, x_last, palette index}}, sprite-global
+    local runs = {{
+{runs_lua}
+    }}
+
+    app.transaction(function()
+        app.activeLayer = target
+        app.activeFrame = spr.frames[idx]
+        local cel = normalize_cel(spr, target, spr.frames[idx], {create_flag})
+        if not cel then print("ERROR:No cel at that layer/frame") return end
+        local img = cel.image
+        for _, run in ipairs(runs) do
+            local color = palette[run[4]]
+            for px = run[2], run[3] do
+                pset(img, px, run[1], color)
+            end
+        end
+    end)
+
+    spr:saveAs(spr.filename)
+    print("OK")
+    """
+    return AsepriteCommand.execute_lua_script_checked(script, filename)
+
+
+@mcp.tool()
+async def draw_rows(
+    filename: str,
+    layer_name: str,
+    frame_index: int,
+    x: int,
+    y: int,
+    rows: List[str],
+    legend: Dict[str, Any],
+    outline: str | None = None,
+    create_if_missing: bool = True,
+) -> str:
+    """Draw pixels from rows of characters, like ASCII art: one character per pixel.
+
+    The compact way to place hand-chosen pixels (faces, hands, animals,
+    handles, any detail under ~12 px), far smaller than a pixel list:
+
+        rows=["..KK..",
+              ".KSSK.",
+              "KSSSSK"],
+        legend={"K": "#1A1C2C", "S": "#F4B41B"}
+
+    Row 1 is drawn at y, its first character at x (sprite pixels). "." or a
+    character missing from the legend leaves that pixel untouched; map a
+    character to "#00000000" to erase. Read existing pixels back in the same
+    format with read_rows, edit the strings, and draw them again.
+
+    Args:
+        filename: Aseprite file to modify
+        layer_name: Layer to draw on
+        frame_index: Frame index starting at 1
+        x: Left edge of the rows (sprite pixels)
+        y: Top edge of the rows (sprite pixels)
+        rows: Equal-width strings, top to bottom
+        legend: Single character -> hex colour (#RGB, #RRGGBB or #RRGGBBAA)
+        outline: Optional hex colour for a 1 px outline around the outside of
+            the drawn pixels (sides only, not diagonals), drawn over whatever
+            is there, e.g. to separate an object from the scene behind it
+        create_if_missing: Create the cel if it does not exist
+    """
+    if not os.path.exists(filename):
+        return f"File {filename} not found"
+    if not rows:
+        return "Invalid rows: give at least one row"
+    width = len(rows[0])
+    for i, row in enumerate(rows):
+        if len(row) != width:
+            return (f"Invalid rows: row {i + 1} is {len(row)} characters wide but row 1 is {width}; "
+                    f"all rows must be the same width (row {i + 1}: {row!r})")
+
+    colors = {}
+    for ch, value in legend.items():
+        if len(ch) != 1:
+            return f"Invalid legend key {ch!r}: keys must be single characters"
+        if value in (None, ""):
+            continue
+        rgba = _parse_hex_color(str(value))
+        if rgba is None:
+            return f"Invalid color value for {ch!r}: {value}"
+        colors[ch] = rgba
+    outline_rgba = None
+    if outline:
+        outline_rgba = _parse_hex_color(outline)
+        if outline_rgba is None:
+            return f"Invalid color value: {outline}"
+
+    pixels, unknown = {}, {}
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch in colors:
+                pixels[(x + c, y + r)] = colors[ch]
+            elif ch not in ". ":
+                unknown[ch] = unknown.get(ch, 0) + 1
+    if not pixels:
+        return "Invalid rows: nothing to draw; every character is '.' or missing from the legend"
+
+    edge = _outline_of(pixels, outline_rgba) if outline_rgba else {}
+
+    success, output = _paint_pixels(filename, layer_name, frame_index, {**pixels, **edge},
+                                    create_if_missing)
+    if not success:
+        return f"Failed to draw rows: {output}"
+    text = (f"Drew {len(pixels)} pixels ({width}x{len(rows)} rows at {x},{y})"
+            f"{f' and a {len(edge)} px outline' if edge else ''} on '{layer_name}' "
+            f"frame {frame_index} in {filename}")
+    if unknown:
+        listed = ", ".join(f"{ch!r} ({n} px)" for ch, n in unknown.items())
+        text += f". Skipped characters missing from the legend: {listed}"
+    return text
+
+
+def _iso_box_faces(x: int, y: int, z: int, w: int, d: int, h: int):
+    """Pixels of a 2:1 isometric box: (top, left, right) sets of (x, y).
+
+    (x, y) is the back corner of the floor footprint, the box is raised z px,
+    w runs right-down (2 px across, 1 px down per unit), d runs left-down.
+    Every edge steps exactly 2-1, the clean isometric line.
+    """
+    tx, ty = x, y - z - h  # top vertex of the top face (a 2 px cap)
+    top = set()
+    for k in range(w + d + 1):
+        left = tx - 2 * k if k <= d else tx - 2 * d + 2 * (k - d)
+        right = tx + 1 + 2 * k if k <= w else tx + 1 + 2 * w - 2 * (k - w)
+        top.update((px, ty + k) for px in range(left, right + 1))
+    split = tx + 2 * w - 2 * d  # left column of the bottom vertex
+    left_face, right_face = set(), set()
+    for c in range(tx - 2 * d, split + 1):
+        below = ty + d + (c - (tx - 2 * d)) // 2
+        left_face.update((c, below + i) for i in range(1, h + 1))
+    for c in range(split + 1, tx + 2 * w + 2):
+        below = ty + w + d - (c - split) // 2
+        right_face.update((c, below + i) for i in range(1, h + 1))
+    return top, left_face, right_face
+
+
+@mcp.tool()
+async def draw_iso_box(
+    filename: str,
+    layer_name: str,
+    frame_index: int,
+    x: int,
+    y: int,
+    z: int,
+    w: int,
+    d: int,
+    h: int,
+    top: str,
+    left: str,
+    right: str,
+    outline: str = "",
+    create_if_missing: bool = True,
+) -> str:
+    """Draw a solid box in 2:1 isometric projection, with clean 2-1 edges.
+
+    For furniture, crates, walls and floors in isometric scenes. The three
+    visible faces get their own colours (light from the top: top lightest,
+    one side mid, the other darkest). Small or organic parts on top of a box
+    (handles, cats, hands) are drawn with draw_rows instead.
+
+    Coordinates, in sprite pixels:
+        (x, y)  back corner of the box's footprint on the floor
+        w       length along the right-down axis: each unit is 2 px right, 1 px down
+        d       length along the left-down axis: each unit is 2 px left, 1 px down
+        h       height in px; z raises the whole box (e.g. a book on a desk)
+    Later boxes draw over earlier ones, so draw back to front.
+
+    Args:
+        filename: Aseprite file to modify
+        layer_name: Layer to draw on
+        frame_index: Frame index starting at 1
+        x: Back corner x
+        y: Back corner y (floor level)
+        z: Elevation above the floor in px (0 = on the floor)
+        w: Units along the right-down axis (>= 1)
+        d: Units along the left-down axis (>= 1)
+        h: Height in px (0 = a flat tile)
+        top: Hex colour of the top face
+        left: Hex colour of the front-left face
+        right: Hex colour of the front-right face
+        outline: Optional hex colour for a 1 px outline around the box,
+            drawn over whatever is there
+        create_if_missing: Create the cel if it does not exist
+    """
+    if not os.path.exists(filename):
+        return f"File {filename} not found"
+    if w < 1 or d < 1 or h < 0:
+        return "w and d must be >= 1 and h >= 0"
+    colors = {}
+    for name, value in (("top", top), ("left", left), ("right", right), ("outline", outline)):
+        if name == "outline" and not value:
+            continue
+        rgba = _parse_hex_color(value)
+        if rgba is None:
+            return f"Invalid color value for {name}: {value}"
+        colors[name] = rgba
+
+    top_px, left_px, right_px = _iso_box_faces(x, y, z, w, d, h)
+    pixels = {p: colors["top"] for p in top_px}
+    pixels.update({p: colors["left"] for p in left_px})
+    pixels.update({p: colors["right"] for p in right_px})
+    edge = _outline_of(pixels, colors["outline"]) if "outline" in colors else {}
+
+    success, output = _paint_pixels(filename, layer_name, frame_index, {**pixels, **edge},
+                                    create_if_missing)
+    if not success:
+        return f"Failed to draw isometric box: {output}"
+    xs = [p[0] for p in pixels]
+    ys = [p[1] for p in pixels]
+    return (f"Isometric box drawn on '{layer_name}' frame {frame_index} in {filename}: "
+            f"covers x {min(xs)}-{max(xs)}, y {min(ys)}-{max(ys)}")
+

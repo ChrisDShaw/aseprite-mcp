@@ -5,11 +5,15 @@ from .. import mcp
 
 @mcp.tool()
 async def run_lua_script(script: str, filename: str = "") -> str:
-    """Execute arbitrary Aseprite Lua code in batch mode (escape hatch).
+    """Execute arbitrary Aseprite Lua code in batch mode (last resort).
 
-    Use this when no dedicated tool covers what you need. The full API
-    is documented at https://www.aseprite.org/api/. Anything the curated
-    tools do can also be done here — they are Lua underneath.
+    Reach for a dedicated tool first: draw_rows / read_rows to place and
+    read pixels as text, draw_text for numbers and labels, replace_color or
+    remap_colors_in_cel_range to recolour, export_animation or export_tag
+    for GIFs, compare_frames and get_bounds to measure motion, view_sprite
+    to look. Use Lua only for what none of them covers, such as a custom
+    procedural effect. The full API is documented at
+    https://www.aseprite.org/api/.
 
     Essentials for batch-mode scripts:
     - When filename is given, it is opened first and available as

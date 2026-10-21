@@ -1,7 +1,9 @@
 import glob
 import os
+import tempfile
 from ..core.commands import AsepriteCommand, lua_escape, reject_traversal
 from ..core.lua import FIND_LAYER, NORMALIZE_CEL
+from ..core.colors import parse_hex_color
 from .. import mcp
 
 @mcp.tool()
@@ -331,6 +333,109 @@ async def export_tag(
         return f"Tag '{tag_name}' exported to {output_filename}"
     return f"Failed to export tag: {output}"
 
+
+
+@mcp.tool()
+async def export_animation(
+    filename: str,
+    output_filename: str,
+    tag: str = "",
+    scale: int = 1,
+    background: str = "",
+) -> str:
+    """Export the animation for sharing: a GIF (or PNG sequence), scaled, on a background.
+
+    The sprite itself is never changed: the background is added to a
+    temporary copy. Use this instead of a Lua saveCopyAs for previews.
+
+    Args:
+        filename: Aseprite file to export
+        output_filename: Output path; .gif gives an animation, .png a numbered sequence
+        tag: Export only this animation tag; "" exports every frame
+        scale: Integer nearest-neighbour scale factor, 1-64 (default 1)
+        background: Optional hex colour filled behind every frame, e.g.
+            "#E9EEF2" so a dark outline reads in any viewer; "" keeps transparency
+    """
+    if not os.path.exists(filename):
+        return f"File {filename} not found"
+    if scale < 1 or scale > 64:
+        return "scale must be between 1 and 64"
+    err = reject_traversal(output_filename)
+    if err:
+        return err
+    if os.path.splitext(output_filename)[1].lower() not in (".gif", ".png"):
+        return "output_filename must end in .gif or .png"
+    bg = None
+    if background:
+        bg = parse_hex_color(background)
+        if bg is None:
+            return f"Invalid color value: {background}"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        source = filename
+        if tag or bg:
+            # --tag silently exports every frame when the tag is missing, so
+            # check it first; build the background copy in the same run.
+            copy_path = os.path.join(tmp, "export.aseprite")
+            safe_copy = lua_escape(copy_path.replace("\\", "/"))
+            safe_tag = lua_escape(tag)
+            bg_flag = "true" if bg else "false"
+            r, g, b, a = bg or (0, 0, 0, 0)
+            script = f"""
+            local spr = app.activeSprite
+            if not spr then print("ERROR:No active sprite") return end
+            local tag = "{safe_tag}"
+            if tag ~= "" then
+                local found = false
+                for _, t in ipairs(spr.tags) do
+                    if t.name == tag then found = true end
+                end
+                if not found then print("ERROR:Tag not found") return end
+            end
+            if {bg_flag} then
+                local copy = Sprite(spr)
+                app.activeSprite = copy
+                if copy.colorMode ~= ColorMode.RGB then
+                    app.command.ChangePixelFormat{{ ui=false, format="rgb" }}
+                end
+                local layer = copy:newLayer()
+                layer.name = "export background"
+                layer.stackIndex = 1
+                local color = Color({r}, {g}, {b}, {a})
+                for _, frame in ipairs(copy.frames) do
+                    local img = Image(copy.width, copy.height, ColorMode.RGB)
+                    img:clear(color)
+                    copy:newCel(layer, frame, img, Point(0, 0))
+                end
+                copy:saveAs("{safe_copy}")
+            end
+            print("OK")
+            """
+            ok, out = AsepriteCommand.execute_lua_script_checked(script, filename)
+            if not ok:
+                return f"Failed to export animation: {out}"
+            if bg:
+                source = copy_path
+
+        args = ["--batch", source]
+        if tag:
+            args += ["--tag", tag]
+        if scale > 1:
+            args += ["--scale", str(scale)]
+        args += ["--save-as", output_filename]
+        success, output = AsepriteCommand.run_command(args)
+
+    if success:
+        # A PNG sequence is written as frame-numbered siblings of the name.
+        base, ext = os.path.splitext(output_filename)
+        if not os.path.exists(output_filename) and not glob.glob(f"{base}*{ext}"):
+            success = False
+            output = "Aseprite exited 0 but wrote no file"
+    if not success:
+        return f"Failed to export animation: {output}"
+    what = f"Tag '{tag}'" if tag else "Animation"
+    on = f" on {background}" if bg else ""
+    return f"{what} exported to {output_filename} at {scale}x{on}"
 
 @mcp.tool()
 async def import_image_as_layer(

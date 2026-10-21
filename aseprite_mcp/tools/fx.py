@@ -2,6 +2,7 @@ import os
 from ..core.commands import AsepriteCommand, lua_escape
 from ..core.lua import FIND_LAYER, NORMALIZE_CEL, PSET, HSL
 from ..core.colors import parse_hex_color
+from ..core.region import parse_region
 from .. import mcp
 
 
@@ -18,6 +19,7 @@ async def outline_cel(
     frame_index: int,
     color: str = "#000000",
     include_diagonals: bool = False,
+    region: str = "",
 ) -> str:
     """Add a 1px outline around all opaque pixels of a cel.
 
@@ -32,6 +34,9 @@ async def outline_cel(
         color: Outline hex color (default black)
         include_diagonals: Also outline diagonal neighbors for a thicker,
             rounded outline (default False)
+        region: Outline only the shapes inside "x,y,w,h" (sprite pixels),
+            e.g. one object on a layer that holds several; the outline may
+            land 1 px outside the region. "" outlines the whole cel
     """
     if not os.path.exists(filename):
         return f"File {filename} not found"
@@ -41,6 +46,10 @@ async def outline_cel(
         return f"Invalid color value: {color}"
     r, g, b = rgb
     diag = "true" if include_diagonals else "false"
+    rect = parse_region(region)
+    if isinstance(rect, str):
+        return rect
+    rx, ry, rw, rh = rect or (0, 0, 0, 0)
 
     safe_layer = lua_escape(layer_name)
     script = f"""
@@ -62,13 +71,20 @@ async def outline_cel(
         local src = img:clone()
         local outline = app.pixelColor.rgba({r}, {g}, {b}, 255)
 
+        -- Shapes to outline: the whole cel, or only what lies in the region.
+        local x0, y0, x1, y1 = 0, 0, src.width - 1, src.height - 1
+        if {rw} > 0 then
+            x0, y0, x1, y1 = {rx}, {ry}, {rx + rw - 1}, {ry + rh - 1}
+        end
+
         local function opaque(x, y)
+            if x < x0 or y < y0 or x > x1 or y > y1 then return false end
             if x < 0 or y < 0 or x >= src.width or y >= src.height then return false end
             return app.pixelColor.rgbaA(src:getPixel(x, y)) > 0
         end
 
-        for py = 0, img.height - 1 do
-            for px = 0, img.width - 1 do
+        for py = math.max(0, y0 - 1), math.min(img.height - 1, y1 + 1) do
+            for px = math.max(0, x0 - 1), math.min(img.width - 1, x1 + 1) do
                 if app.pixelColor.rgbaA(src:getPixel(px, py)) == 0 then
                     local touch = opaque(px - 1, py) or opaque(px + 1, py)
                                   or opaque(px, py - 1) or opaque(px, py + 1)

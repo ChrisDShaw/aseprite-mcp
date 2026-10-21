@@ -2,7 +2,7 @@
 
 A Python MCP server that gives AI assistants full control over [Aseprite](https://www.aseprite.org/) for creating pixel art and animated sprites.
 
-**117 tools across 18 categories** — canvas, drawing, layers, animation, palettes, effects, slices, tilemaps, exports, visual-feedback/analysis tools, and a raw Lua escape hatch. The tool set is designed so an LLM has everything it needs to produce *good* pixel art, not just primitives: shading ramps with hue shifting, ordered dithering, outlines, retro palette presets with quantization, onion-skin renders, and frame diffing for animation work.
+**123 tools across 18 categories** — canvas, drawing, layers, animation, palettes, effects, slices, tilemaps, exports, visual-feedback/analysis tools, and a raw Lua escape hatch. The tool set is designed so an LLM has everything it needs to produce *good* pixel art, not just primitives: shading ramps with hue shifting, ordered dithering, outlines, retro palette presets with quantization, onion-skin renders, and frame diffing, bounds and lint checks for animation work.
 
 ## Examples
 
@@ -76,20 +76,20 @@ The Fable 5 tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvm
 
 | Category | Tools | Description |
 |----------|------:|-------------|
-| [Canvas](#canvas) | 6 | Create sprites, manage layers/frames, set the active state |
-| [Drawing](#drawing) | 14 | Pixels, lines, rectangles, circles, ellipses, polygons, paths, fills, gradients |
+| [Canvas](#canvas) | 7 | Create sprites, manage layers/frames, set the active state |
+| [Drawing](#drawing) | 16 | Pixels, text rows, lines, rectangles, circles, ellipses, polygons, paths, fills, gradients, isometric boxes |
 | [Text](#text) | 3 | Draw and measure text with bitmap sprite-sheet or TrueType fonts |
 | [Layers](#layers) | 7 | Delete, rename, duplicate, reorder, blend modes, merge, flatten |
 | [Selection & Regions](#selection--regions) | 4 | Move, copy, and erase rectangular regions or colors |
-| [Effects](#effects) | 5 | Outlines, color replacement, HSL adjustment, ordered dithering |
+| [Effects](#effects) | 12 | Outlines, color replacement, HSL adjustment, ordered dithering, native Aseprite filters |
 | [Animation](#animation) | 24 | Frames, cels, tags, tweening with easing, propagation |
 | [Palette](#palette) | 8 | Get/set palettes, retro presets, color ramps, quantization, color modes |
 | [Transform](#transform) | 4 | Flip, rotate, resize, crop |
 | [Slices](#slices) | 5 | Named regions, 9-patch centers, pivot points |
 | [Tilemap](#tilemap) | 5 | Tilemap layers, tileset editing, tile placement |
-| [Export & Import](#export--import) | 7 | PNG, GIF, sprite sheets, per-layer/per-tag export, image import |
-| [Inspection](#inspection) | 3 | Read pixels and sprite metadata |
-| [Analysis & Visual Feedback](#analysis--visual-feedback) | 4 | Sprite previews the model can see, onion-skin renders, frame diffing, color statistics |
+| [Export & Import](#export--import) | 8 | PNG, GIF, sprite sheets, per-layer/per-tag export, previews on a background, image import |
+| [Inspection](#inspection) | 6 | Read pixels (one layer, the visible composite, or as text rows) and sprite metadata |
+| [Analysis & Visual Feedback](#analysis--visual-feedback) | 6 | Sprite previews the model can see, onion-skin renders, frame diffing, bounds, lint, color statistics |
 | [Quality](#quality) | 4 | Validate and sanitize animation consistency |
 | [Scene](#scene) | 1 | Copy layers between sprite files |
 | [Preview & Guide](#preview--guide) | 3 | Local HTTP preview server, workflow guide |
@@ -111,6 +111,17 @@ The Fable 5 tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvm
 
 All `_at` variants target a specific layer/frame and can create the cel on demand. Coordinates are sprite-global.
 
+```
+draw_rows(filename="mug.aseprite", layer_name="mug", frame_index=1, x=4, y=2,
+          rows=[".WWWW..",
+                ".WWWWKK",
+                ".WWWW.K",
+                "..WW.K."],
+          legend={"W": "#F4F4F4", "K": "#8B5A2B"}, outline="#1A1C2C")
+```
+
+`.` (or any character missing from the legend) leaves a pixel untouched; `read_rows` returns pixels in the same format, so an edit is read, change a few characters, draw again.
+
 | Tool | Description |
 |------|-------------|
 | `draw_pixels` | Plot individual pixels with per-pixel colors |
@@ -123,6 +134,8 @@ All `_at` variants target a specific layer/frame and can create the cel on deman
 | `draw_path` | Polyline through a point list with thickness |
 | `fill_area` / `fill_area_at` | Paint-bucket flood fill |
 | `apply_gradient_rect` | Smooth linear gradient fill in a rectangle |
+| `draw_rows` | Pixels as rows of characters plus a colour legend, like ASCII art, with an optional 1px outline — the compact way to place hand-chosen detail (faces, hands, animals, handles) |
+| `draw_iso_box` | Solid 2:1 isometric box with clean 2-1 edges and a colour per face, for furniture and props |
 
 ### Text
 
@@ -197,11 +210,23 @@ The pixel-art toolbox: clean outlines, palette-respecting blends, and shading va
 
 | Tool | Description |
 |------|-------------|
-| `outline_cel` | Add a 1px outline around all opaque pixels |
+| `outline_cel` | Add a 1px outline around all opaque pixels, or only around the shapes in a region |
 | `replace_color` | Replace one color with another (with tolerance), preserving alpha |
 | `adjust_hsl` | Shift hue/saturation/lightness of a cel — palette swaps, night scenes, shadows |
 | `apply_dither_gradient` | Two-color gradient using Bayer 4×4 ordered dithering |
 | `apply_dither_pattern` | Uniform dithered mix of two colors at a given density |
+
+Native filters run Aseprite's own engine commands on a layer and frame:
+
+| Tool | Description |
+|------|-------------|
+| `outline_native` | Aseprite's Outline command around opaque pixels |
+| `adjust_hsl_native` | Aseprite's Hue/Saturation/Lightness filter |
+| `adjust_brightness_contrast` | Brightness/Contrast filter |
+| `invert_colors` | Colour inversion |
+| `apply_convolution` | Convolution filter: blur, sharpen, edge, emboss … |
+| `list_convolution_matrices` | List the built-in matrices for `apply_convolution` |
+| `extract_palette` | Build an optimal palette from the sprite (native colour quantization) |
 
 ### Animation
 
@@ -274,10 +299,11 @@ The pixel-art toolbox: clean outlines, palette-respecting blends, and shading va
 | Tool | Description |
 |------|-------------|
 | `export_sprite` | Export to PNG, GIF, JPG, ... |
-| `export_frame` | Export one frame as PNG with integer upscaling — the core visual-feedback loop: draw, export at 8×, look, iterate |
+| `export_frame` | Export one frame as PNG with integer upscaling (to look at your work, use `view_sprite`) |
 | `export_spritesheet` | Sprite sheet (horizontal/vertical/rows/columns/packed) with optional JSON metadata and per-tag filtering |
 | `export_layers` | One PNG per layer |
 | `export_tag` | Export an animation tag as GIF or PNG sequence |
+| `export_animation` | GIF or PNG sequence of every frame or one tag, scaled, optionally on a solid background — the sprite itself is never changed |
 | `import_image_as_layer` | Import a PNG into a layer (references, premade parts) |
 | `copy_sprite` | Duplicate the .aseprite file |
 
@@ -287,6 +313,8 @@ The pixel-art toolbox: clean outlines, palette-respecting blends, and shading va
 |------|-------------|
 | `get_pixel_color` | Read one pixel's RGBA |
 | `get_pixels_rect` | Read a rectangle of pixels as JSON |
+| `get_composite_pixel` / `get_composite_rect` | Read what is visible (all layers composited) at a pixel or over a rectangle |
+| `read_rows` | Read a region as rows of characters plus a legend — the compact format `draw_rows` takes back |
 | `get_sprite_info` | Sprite metadata (also listed under Animation) |
 
 ### Analysis & Visual Feedback
@@ -297,10 +325,12 @@ Batch-mode equivalents of what a human artist gets from the Aseprite UI.
 |------|-------------|
 | `view_sprite` | Return an image of the frames straight to the model — zoomed, with pixel grid and coordinate rulers so it can fix exact pixels |
 | `render_onion_skin` | Render a frame over translucent ghosts of neighboring frames — check motion continuity without opening Aseprite |
-| `compare_frames` | Diff two frames: changed pixel count, percentage, bounding box |
+| `compare_frames` | Diff two frames, optionally one layer or region (did the feet move?): changed pixel count, percentage, bounding box |
+| `get_bounds` | Bounding box of the drawn pixels per frame, optionally one layer — measure rise and fall, ground line, canvas edges |
+| `lint_sprite` | Detached pieces, lone pixels and orphan pixels, with coordinates |
 | `get_color_stats` | Color histogram of a frame — catches palette drift and near-duplicate colors |
 
-`view_sprite` is the drawing loop's eyes: it returns the picture as MCP image content, so the model sees its work without exporting a file and opening it, and works in clients that cannot read local files. Pick frames with `"3"`, `"1-4"` or `"1,3,6-8"`, and `layer_name` to isolate one layer.
+`view_sprite` is the drawing loop's eyes: it returns the picture as MCP image content, so the model sees its work without exporting a file and opening it, and works in clients that cannot read local files. Pick frames with `"3"`, `"1-4"` or `"1,3,6-8"`, `layer_name` to isolate one layer, and `region="x,y,w,h"` to zoom into a detail with rulers still in sprite coordinates.
 
 ### Quality
 
@@ -322,7 +352,7 @@ Batch-mode equivalents of what a human artist gets from the Aseprite UI.
 | Tool | Description |
 |------|-------------|
 | `start_preview_server` / `stop_preview_server` | Serve exported files over local HTTP |
-| `animation_workflow_guide` | How to animate well: key poses, anticipation, squash and stretch, timing (`character`, `environment`) |
+| `animation_workflow_guide` | How to animate well: key poses, anticipation, squash and stretch, timing (`character`, `idle`, `environment`) |
 
 The server also sends short pixel-art rules as MCP `instructions` when a client connects (silhouette first, one light direction, clean lines, check each pass), so the model gets them without calling anything.
 
@@ -330,16 +360,16 @@ The server also sends short pixel-art rules as MCP `instructions` when a client 
 
 | Tool | Description |
 |------|-------------|
-| `run_lua_script` | Execute arbitrary Aseprite Lua ([API docs](https://www.aseprite.org/api/)) in batch mode. The escape hatch when no dedicated tool fits: one script can batch many operations into a single Aseprite launch. Remember to `spr:saveAs(spr.filename)` and `print()` your results. ⚠️ Runs unrestricted code on the host — only pass scripts you trust. |
+| `run_lua_script` | Execute arbitrary Aseprite Lua ([API docs](https://www.aseprite.org/api/)) in batch mode. The last resort, for what no dedicated tool covers: one script can batch many operations into a single Aseprite launch. Remember to `spr:saveAs(spr.filename)` and `print()` your results. ⚠️ Runs unrestricted code on the host — only pass scripts you trust. |
 
 ## Recommended Workflow for LLMs
 
 1. **Plan the palette first**: `generate_color_ramp` for each material (skin, armor, blade), or `apply_palette_preset` for a retro look.
 2. **Build in layers**: background / body / equipment / effects, so parts can be animated and edited independently.
-3. **Draw coarse to fine**: silhouette with `draw_rectangle_at` / `draw_ellipse_at` / `fill_area_at`, then refine with `draw_pixels_at`.
-4. **Look at your work**: `export_frame` at 8×, inspect, fix, repeat. Use `get_color_stats` to keep the palette tight.
+3. **Draw coarse to fine**: silhouette with `draw_rectangle_at` / `draw_ellipse_at` / `fill_area_at`, then refine with `draw_rows`.
+4. **Look at your work**: `view_sprite` after every pass (`region` to zoom in), fix, repeat. Use `get_color_stats` to keep the palette tight and `lint_sprite` to catch stray and detached pixels.
 5. **Shade with intent**: `adjust_hsl` for shadow layers, `apply_dither_gradient` for blends, `outline_cel` for readability.
-6. **Animate with the cel tools**: `propagate_cels`, then `tween_cel_positions_eased` / `oscillate_cel_positions`; verify with `render_onion_skin` and `compare_frames`; export with `export_tag`.
+6. **Animate with the cel tools**: `propagate_cels`, then `tween_cel_positions_eased` / `oscillate_cel_positions`; verify with `view_sprite`, `compare_frames` and `get_bounds`; export with `export_animation` or `export_tag`.
 
 ## Docker Usage
 
