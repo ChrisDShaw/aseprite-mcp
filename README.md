@@ -356,6 +356,8 @@ Batch-mode equivalents of what a human artist gets from the Aseprite UI.
 
 The server also sends short pixel-art rules as MCP `instructions` when a client connects (silhouette first, one light direction, clean lines, check each pass), so the model gets them without calling anything.
 
+Tool failures use MCP error results (`isError: true`) for the server's established error-message prefixes. Direct Python calls to tool functions continue to return their original strings.
+
 ### Scripting
 
 | Tool | Description |

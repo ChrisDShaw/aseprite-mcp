@@ -1,6 +1,48 @@
 """Aseprite MCP - Model Context Protocol implementation for Aseprite."""
 
+from functools import wraps
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+
+
+_TOOL_ERROR_PREFIXES = (
+    "Cannot ",
+    "Directory ",
+    "ERROR:",
+    "Failed",
+    "File ",
+    "Invalid",
+    "No preview server",
+    "Port ",
+    "Script cannot",
+    "Script failed:",
+    "Script exceeds",
+    "Unsafe Lua",
+    "Width and height",
+    "scale must ",
+)
+
+
+class AsepriteMCP(FastMCP):
+    """FastMCP server that marks established error-string responses as tool errors."""
+
+    def tool(self, *args: Any, **kwargs: Any) -> Any:
+        register_tool = super().tool(*args, **kwargs)
+
+        def decorator(func: Any) -> Any:
+            @wraps(func)
+            async def checked_tool(*call_args: Any, **call_kwargs: Any) -> Any:
+                result = await func(*call_args, **call_kwargs)
+                if isinstance(result, str) and result.startswith(_TOOL_ERROR_PREFIXES):
+                    raise ToolError(result)
+                return result
+
+            register_tool(checked_tool)
+            return func
+
+        return decorator
 
 
 INSTRUCTIONS = """\
@@ -39,7 +81,7 @@ and change shape on every frame in the air. Call animation_workflow_guide before
 (use_case "idle" for idle and breathing loops).
 """
 
-mcp = FastMCP("aseprite", instructions=INSTRUCTIONS)
+mcp = AsepriteMCP("aseprite", instructions=INSTRUCTIONS)
 
 __version__ = "0.1.0"
 __author__ = "Divyansh Singh"
