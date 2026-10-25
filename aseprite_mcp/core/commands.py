@@ -4,10 +4,39 @@ import subprocess
 import tempfile
 import threading
 
-import dotenv
-
 _ENV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
-dotenv.load_dotenv(dotenv_path=_ENV_PATH)
+
+
+def _load_env_file(path: str) -> None:
+    """Load simple KEY=VALUE settings without replacing existing environment values."""
+    try:
+        with open(path, encoding="utf-8") as env_file:
+            lines = env_file.readlines()
+    except FileNotFoundError:
+        return
+
+    for line in lines:
+        entry = line.strip()
+        if not entry or entry.startswith("#"):
+            continue
+        if entry.startswith("export "):
+            entry = entry[7:].lstrip()
+        key, separator, value = entry.partition("=")
+        key = key.strip()
+        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        if key in os.environ:
+            continue
+
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        else:
+            value = re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+        os.environ[key] = value
+
+
+_load_env_file(_ENV_PATH)
 
 _MAX_LUA_SCRIPT_BYTES = int(os.getenv("ASEPRITE_MCP_MAX_LUA_BYTES", "65536"))
 _LUA_TIMEOUT_SECONDS = float(os.getenv("ASEPRITE_MCP_LUA_TIMEOUT_SECONDS", "120"))
