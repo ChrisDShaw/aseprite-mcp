@@ -21,15 +21,16 @@ async def run_lua_script(
     procedural effect. The full API is documented at
     https://www.aseprite.org/api/.
 
-    By default, unsafe host-level Lua APIs such as os./io./dofile/require are
-    blocked. Set allow_unsafe_lua=True only for a trusted script that explicitly
-    requires host access. In production, prefer leaving this disabled and using
-    the dedicated editing tools instead.
+    A best-effort text check blocks common host-level Lua APIs such as
+    os./io./dofile/require. It is not a sandbox and can be bypassed; Lua runs
+    with the host user's privileges. Use OS-level isolation for untrusted
+    scripts. Set allow_unsafe_lua=True only for trusted scripts that need those
+    APIs. Execution is also time-limited and output is capped.
 
     Args:
         script: Lua source code to execute
         filename: Optional Aseprite file to open before running
-        allow_unsafe_lua: Allow host-level Lua features for trusted scripts
+        allow_unsafe_lua: Skip the best-effort host-API check for trusted scripts
         max_script_bytes: Hard cap on script size in bytes
     """
     if not script.strip():

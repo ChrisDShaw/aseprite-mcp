@@ -360,7 +360,9 @@ The server also sends short pixel-art rules as MCP `instructions` when a client 
 
 | Tool | Description |
 |------|-------------|
-| `run_lua_script` | Execute Aseprite Lua in batch mode ([API docs](https://www.aseprite.org/api/)). The last resort, for what no dedicated tool covers: one script can batch many operations into a single Aseprite launch. By default, host-level Lua APIs (`os.*`, `io.*`, `dofile`, `require`, etc.) are blocked. Set `allow_unsafe_lua=True` only for trusted scripts that need it. |
+| `run_lua_script` | Execute Aseprite Lua in batch mode ([API docs](https://www.aseprite.org/api/)). The last resort, for what no dedicated tool covers: one script can batch many operations into a single Aseprite launch. A best-effort text check blocks common host-level Lua APIs, but is not a sandbox and can be bypassed. Lua runs with the host user's privileges; use OS-level isolation for untrusted scripts. Execution is time-limited and output is capped. Set `allow_unsafe_lua=True` only for trusted scripts that need host access. |
+
+Lua defaults can be adjusted with `ASEPRITE_MCP_MAX_LUA_BYTES` (65536), `ASEPRITE_MCP_LUA_TIMEOUT_SECONDS` (120), and `ASEPRITE_MCP_MAX_OUTPUT_BYTES` (1048576). The per-call script-size limit can lower, but not raise, the server-configured maximum.
 
 ## Recommended Workflow for LLMs
 
