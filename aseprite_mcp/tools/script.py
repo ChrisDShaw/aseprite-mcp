@@ -1,11 +1,17 @@
 import os
-from ..core.commands import AsepriteCommand
+
 from .. import mcp
+from ..core.commands import AsepriteCommand, reject_traversal
 
 
 @mcp.tool()
-async def run_lua_script(script: str, filename: str = "") -> str:
-    """Execute arbitrary Aseprite Lua code in batch mode (last resort).
+async def run_lua_script(
+    script: str,
+    filename: str = "",
+    allow_unsafe_lua: bool = False,
+    max_script_bytes: int = 65536,
+) -> str:
+    """Execute Aseprite Lua code in batch mode (last resort).
 
     Reach for a dedicated tool first: draw_rows / read_rows to place and
     read pixels as text, draw_text for numbers and labels, replace_color or
@@ -15,29 +21,34 @@ async def run_lua_script(script: str, filename: str = "") -> str:
     procedural effect. The full API is documented at
     https://www.aseprite.org/api/.
 
-    Essentials for batch-mode scripts:
-    - When filename is given, it is opened first and available as
-      app.activeSprite.
-    - Changes are NOT saved automatically; call spr:saveAs(spr.filename)
-      at the end if you modified the sprite.
-    - print() is the only way to return data; a clean exit does not mean
-      your logic succeeded, so print what you need to verify.
-    - Coordinates on cel images are cel-local: offset sprite-global
-      coordinates by cel.position before getPixel/putPixel.
-
-    WARNING: this executes unrestricted code (including io/os access)
-    on the host running Aseprite. Only pass scripts you trust.
+    By default, unsafe host-level Lua APIs such as os./io./dofile/require are
+    blocked. Set allow_unsafe_lua=True only for a trusted script that explicitly
+    requires host access. In production, prefer leaving this disabled and using
+    the dedicated editing tools instead.
 
     Args:
         script: Lua source code to execute
         filename: Optional Aseprite file to open before running
+        allow_unsafe_lua: Allow host-level Lua features for trusted scripts
+        max_script_bytes: Hard cap on script size in bytes
     """
     if not script.strip():
         return "Script cannot be empty"
-    if filename and not os.path.exists(filename):
-        return f"File {filename} not found"
+    if len(script.encode("utf-8")) > max_script_bytes:
+        return f"Script exceeds the maximum size of {max_script_bytes} bytes"
 
-    success, output = AsepriteCommand.execute_lua_script(script, filename or None)
+    if filename:
+        traversal_error = reject_traversal(filename)
+        if traversal_error:
+            return traversal_error
+        if not os.path.exists(filename):
+            return f"File {filename} not found"
+
+    success, output = AsepriteCommand.execute_lua_script(
+        script,
+        filename or None,
+        allow_unsafe_lua=allow_unsafe_lua,
+    )
     if success:
         return output if output.strip() else "Script executed (no output printed)"
     return f"Script failed: {output}"

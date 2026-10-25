@@ -5,8 +5,18 @@ import tempfile
 import signal
 from .. import mcp
 
-def _pid_path(port: int) -> str:
-    return os.path.join(tempfile.gettempdir(), f"aseprite_mcp_preview_{port}.pid")
+
+def _pid_path(port: int, host: str = "127.0.0.1") -> str:
+    host_name = host.replace(":", "_")
+    return os.path.join(tempfile.gettempdir(), f"aseprite_mcp_preview_{port}_{host_name}.pid")
+
+
+def _normalize_host(host: str | None, allow_external: bool) -> str:
+    value = (host or "127.0.0.1").strip() or "127.0.0.1"
+    if allow_external:
+        return value
+    return "127.0.0.1"
+
 
 def _pid_is_running(pid: int) -> bool:
     try:
@@ -23,18 +33,39 @@ def _pid_is_running(pid: int) -> bool:
     except Exception:
         return False
 
+
 @mcp.tool()
-async def start_preview_server(directory: str, port: int = 8000) -> str:
+async def start_preview_server(
+    directory: str,
+    port: int = 8000,
+    host: str = "127.0.0.1",
+    allow_external: bool = False,
+) -> str:
     """Start a simple HTTP server to preview exported sprites.
+
+    By default the preview is bound to localhost only. To expose it outside the
+    current machine, callers must explicitly set allow_external=True and choose a
+    bind host such as 0.0.0.0.
 
     Args:
         directory: Directory to serve
         port: Port to bind (default 8000)
+        host: Bind address for the preview server (default 127.0.0.1)
+        allow_external: Allow the server to listen on a non-loopback interface
     """
     if not os.path.isdir(directory):
         return f"Directory {directory} not found"
 
-    pid_file = _pid_path(port)
+    # Keep local previewing as the safe default; remote access is explicit.
+    bind_host = _normalize_host(host, allow_external)
+    if not allow_external and host and host.strip() not in ("", "127.0.0.1", "localhost"):
+        return (
+            "Refusing to bind preview server to a non-local address unless "
+            "allow_external=True is explicitly set."
+        )
+
+    directory = os.path.abspath(directory)
+    pid_file = _pid_path(port, bind_host)
     if os.path.exists(pid_file):
         try:
             with open(pid_file, "r", encoding="utf-8") as f:
@@ -45,7 +76,7 @@ async def start_preview_server(directory: str, port: int = 8000) -> str:
             pass
         os.remove(pid_file)
 
-    args = [sys.executable, "-m", "http.server", str(port), "--directory", directory]
+    args = [sys.executable, "-m", "http.server", str(port), "--bind", bind_host, "--directory", directory]
     popen_kwargs = {"cwd": directory, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     if os.name == "nt":
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
@@ -55,16 +86,23 @@ async def start_preview_server(directory: str, port: int = 8000) -> str:
     with open(pid_file, "w", encoding="utf-8") as f:
         f.write(str(proc.pid))
 
-    return f"Preview server started: http://localhost:{port}/"
+    if bind_host in ("0.0.0.0", "::"):
+        url = f"http://localhost:{port}/"
+    else:
+        url = f"http://{bind_host}:{port}/"
+    return f"Preview server started: {url}"
+
 
 @mcp.tool()
-async def stop_preview_server(port: int = 8000) -> str:
+async def stop_preview_server(port: int = 8000, host: str = "127.0.0.1") -> str:
     """Stop the preview HTTP server for a given port.
 
     Args:
         port: Port to stop (default 8000)
+        host: Bind address used when starting the server (default 127.0.0.1)
     """
-    pid_file = _pid_path(port)
+    bind_host = _normalize_host(host, allow_external=True)
+    pid_file = _pid_path(port, bind_host)
     if not os.path.exists(pid_file):
         return f"No preview server PID found for port {port}"
 
