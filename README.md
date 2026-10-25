@@ -74,6 +74,21 @@ The Fable 5 tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvm
 
 ## Tool Categories
 
+### Choosing a tool
+
+Start with the narrowest tool that matches the task:
+
+| If you need to... | Start with... |
+|---|---|
+| Understand a sprite before editing | `get_sprite_info`, `view_sprite`, `get_color_stats`, or `read_rows` |
+| Make a precise pixel edit | `draw_rows` or a shape tool with an `_at` variant |
+| Change structure or animation | `add_layer`, `copy_frame`, `set_frame`, or a focused tool in [Animation](#animation) |
+| Check whether an edit worked | `view_sprite`, `compare_frames`, `get_bounds`, or `lint_sprite` |
+| Produce a deliverable | `export_sprite`, `export_animation`, or `export_tag` |
+| Do something no dedicated tool supports | Use `run_lua_script` last; it executes with host-user privileges |
+
+Prefer read/analysis tools to inspect first, then use the smallest mutation needed, and inspect again. Many edit tools save changes to the input sprite file; use `copy_sprite` first when you want to preserve the original.
+
 | Category | Tools | Description |
 |----------|------:|-------------|
 | [Canvas](#canvas) | 7 | Create sprites, manage layers/frames, set the active state |
