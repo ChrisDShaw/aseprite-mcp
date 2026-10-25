@@ -12,6 +12,7 @@ import asyncio
 import os
 import shutil
 import sys
+import tempfile
 
 import pytest
 
@@ -20,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import aseprite_mcp.tools  # noqa: F401  (registers all tools)
 from aseprite_mcp.tools import canvas, drawing
 
-BASE = "/tmp/ase-pytest"
+BASE = tempfile.mkdtemp(prefix="ase-pytest-")
 
 
 def run(coro):
@@ -37,9 +38,9 @@ def ok(result):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def base_dir():
-    shutil.rmtree(BASE, ignore_errors=True)
+def base_dir(request):
     os.makedirs(BASE, exist_ok=True)
+    request.addfinalizer(lambda: shutil.rmtree(BASE, ignore_errors=True))
     return BASE
 
 
