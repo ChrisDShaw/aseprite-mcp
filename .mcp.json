@@ -5,6 +5,7 @@
       "command": "uv",
       "args": [
         "run",
+        "--locked",
         "-m",
         "aseprite_mcp"
       ],

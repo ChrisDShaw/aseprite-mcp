@@ -390,7 +390,9 @@ Lua defaults can be adjusted with `ASEPRITE_MCP_MAX_LUA_BYTES` (65536), `ASEPRIT
 5. **Shade with intent**: `adjust_hsl` for shadow layers, `apply_dither_gradient` for blends, `outline_cel` for readability.
 6. **Animate with the cel tools**: `propagate_cels`, then `tween_cel_positions_eased` / `oscillate_cel_positions`; verify with `view_sprite`, `compare_frames` and `get_bounds`; export with `export_animation` or `export_tag`.
 
-## Docker Usage
+## Optional: Docker
+
+Docker is an alternative deployment option. For the recommended local setup without Docker, see [Local Installation](#local-installation).
 
 ### Quick Start
 
@@ -427,27 +429,47 @@ docker run --rm -i --env-file .env aseprite-mcp:latest
 
 If installed, the binary will be at `/opt/steamapps/common/Aseprite/aseprite` and `ASEPRITE_PATH` will be picked up automatically.
 
-## Local Installation
+## Local Installation (Recommended)
 
-### Prerequisites
-- Python 3.13+
-- `uv` package manager
-- Aseprite (set `ASEPRITE_PATH` in `.env` if it is not on your PATH)
+### First-time setup (no Docker)
 
-### Installation:
-```json
-{
-  "mcpServers": {
-      "aseprite": {
-          "command": "/opt/homebrew/bin/uv",
-          "args": [
-              "--directory",
-              "/path/to/repo",
-              "run",
-              "-m",
-              "aseprite_mcp"
-          ]
-      }
-  }
-}
-```
+You only need to do this once:
+
+1. Install Python 3.13 or newer.
+2. Install `uv`, the tool that creates and manages this project's private Python environment:
+
+   ```powershell
+   py -3.13 -m pip install --user uv
+   ```
+
+   If `py` is not available, install `uv` using its [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
+3. Open a terminal in this project folder and run:
+
+   ```powershell
+   uv sync --locked
+   ```
+
+   This creates `.venv` in the project folder and installs the required packages there. You do not need to activate the environment.
+4. Make sure Aseprite is installed. If `aseprite` is not on your PATH, copy `sample.env` to `.env` and set `ASEPRITE_PATH` to the full path of the Aseprite executable. For example:
+
+   ```text
+   ASEPRITE_PATH="C:\Program Files (x86)\Steam\steamapps\common\Aseprite\Aseprite.exe"
+   ```
+
+5. Start the server to check that setup worked:
+
+   ```powershell
+   uv run --locked -m aseprite_mcp
+   ```
+
+   The server runs in the terminal; press Ctrl+C to stop it. If Aseprite is installed at the path above, you can check it with:
+
+   ```powershell
+   uv run --locked python -c "from aseprite_mcp.core.commands import AsepriteCommand; print(AsepriteCommand.run_command(['--version']))"
+   ```
+
+### Connect your MCP client
+
+The repository's `.mcp.json` starts the server with `uv run --locked -m aseprite_mcp`. Configure your MCP client to use this project folder's `.mcp.json`, or copy its `aseprite` server entry into the client's MCP configuration. If the client does not launch commands from the project folder, set the working directory to this project folder in its configuration.
+
+The optional `.env` file supports simple `KEY=VALUE` lines, comments, and single- or double-quoted values. Existing process environment variables take precedence; shell expansion and multiline values are not supported. `uv.lock` is the canonical resolved dependency set; `requirements.txt` lists the runtime dependencies for pip-based installs.
