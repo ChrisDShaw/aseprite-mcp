@@ -1,8 +1,10 @@
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import signal
+import time
 from .. import mcp
 
 
@@ -34,6 +36,44 @@ def _pid_is_running(pid: int) -> bool:
         return False
 
 
+def _wait_for_server(proc: subprocess.Popen, host: str, port: int, timeout: float = 3.0) -> tuple[bool, str]:
+    if host == "0.0.0.0":
+        probe_host = "127.0.0.1"
+    elif host == "::":
+        probe_host = "::1"
+    else:
+        probe_host = host
+    deadline = time.monotonic() + timeout
+    last_error = "server did not become reachable"
+
+    while time.monotonic() < deadline:
+        returncode = proc.poll()
+        if returncode is not None:
+            return False, f"server process exited with code {returncode}"
+
+        try:
+            with socket.create_connection((probe_host, port), timeout=0.2):
+                time.sleep(0.05)
+                if proc.poll() is None:
+                    return True, ""
+                return False, f"server process exited with code {proc.returncode}"
+        except OSError as exc:
+            last_error = str(exc)
+            time.sleep(0.05)
+
+    return False, last_error
+
+
+def _terminate_process(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+
 @mcp.tool()
 async def start_preview_server(
     directory: str,
@@ -55,6 +95,8 @@ async def start_preview_server(
     """
     if not os.path.isdir(directory):
         return f"Directory {directory} not found"
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        return "Port must be an integer between 1 and 65535"
 
     # Keep local previewing as the safe default; remote access is explicit.
     bind_host = _normalize_host(host, allow_external)
@@ -82,14 +124,28 @@ async def start_preview_server(
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     else:
         popen_kwargs["start_new_session"] = True
-    proc = subprocess.Popen(args, **popen_kwargs)
-    with open(pid_file, "w", encoding="utf-8") as f:
-        f.write(str(proc.pid))
+    try:
+        proc = subprocess.Popen(args, **popen_kwargs)
+    except OSError as exc:
+        return f"Failed to start preview server: {exc}"
+
+    ready, error = _wait_for_server(proc, bind_host, port)
+    if not ready:
+        _terminate_process(proc)
+        return f"Failed to start preview server on port {port}: {error}"
+
+    try:
+        with open(pid_file, "w", encoding="utf-8") as f:
+            f.write(str(proc.pid))
+    except OSError as exc:
+        _terminate_process(proc)
+        return f"Failed to save preview server PID: {exc}"
 
     if bind_host in ("0.0.0.0", "::"):
         url = f"http://localhost:{port}/"
     else:
-        url = f"http://{bind_host}:{port}/"
+        url_host = f"[{bind_host}]" if ":" in bind_host else bind_host
+        url = f"http://{url_host}:{port}/"
     return f"Preview server started: {url}"
 
 
