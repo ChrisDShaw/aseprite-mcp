@@ -11,14 +11,17 @@ async def run_lua_script(
     allow_unsafe_lua: bool = False,
     max_script_bytes: int = 65536,
 ) -> str:
-    """Execute Aseprite Lua code in batch mode (last resort).
+    """Execute a bounded native Aseprite batch through MCP.
 
-    Reach for a dedicated tool first: draw_rows / read_rows to place and
-    read pixels as text, draw_text for numbers and labels, replace_color or
-    remap_colors_in_cel_range to recolour, export_animation or export_tag
-    for GIFs, compare_frames and get_bounds to measure motion, view_sprite
-    to look. Use Lua only for what none of them covers, such as a custom
-    procedural effect. The full API is documented at
+    Prefer dedicated tools for a small edit or inspection, and native range
+    tools when they cover the task. Use this tool for related multi-cel,
+    frame-timing and tag operations that lack a dedicated batch tool, instead
+    of starting Aseprite separately for every small change. Validate the full
+    plan and target frames/layers first; use app.activeSprite and
+    app.transaction, save once, and print a compact result. Serialize writes
+    to each sprite and split large batches at meaningful visual checkpoints.
+    Keep pixel authoring in Aseprite through MCP. Keep allow_unsafe_lua=False;
+    routine batching needs no host APIs or validation bypass. The full API is documented at
     https://www.aseprite.org/api/.
 
     A best-effort text check blocks common host-level Lua APIs such as

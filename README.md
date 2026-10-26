@@ -76,7 +76,7 @@ The Fable 5 tasks recreate the benchmark from [Draw Me a Swordsman](https://ljvm
 
 ### Choosing a tool
 
-Start with the narrowest tool that matches the task:
+For a single edit or inspection, start with the narrowest tool that matches the task. For an animation or related multi-step pass, batch work per sprite instead of making one call per small change:
 
 | If you need to... | Start with... |
 |---|---|
@@ -85,9 +85,23 @@ Start with the narrowest tool that matches the task:
 | Change structure or animation | `add_layer`, `copy_frame`, `set_frame`, or a focused tool in [Animation](#animation) |
 | Check whether an edit worked | `view_sprite`, `compare_frames`, `get_bounds`, or `lint_sprite` |
 | Produce a deliverable | `export_sprite`, `export_animation`, or `export_tag` |
-| Do something no dedicated tool supports | Use `run_lua_script` last; it executes with host-user privileges |
+| Apply related cel/timing/tag changes together | Prefer dedicated bulk tools; otherwise use one bounded `run_lua_script` transaction through MCP |
+| Do something no dedicated tool supports | Use a bounded `run_lua_script`; it executes with host-user privileges |
 
-Prefer read/analysis tools to inspect first, then use the smallest mutation needed, and inspect again. Many edit tools save changes to the input sprite file; use `copy_sprite` first when you want to preserve the original.
+Inspect first, apply a coherent batch, then review the changed art. Many edit tools save changes to the input sprite file; use `copy_sprite` when preserving the original or preparing a recoverable substantial edit.
+
+### Default animation workflow: batch by sprite and art pass
+
+Each command starts a separate batch-mode Aseprite process. A sequence of individual cel writes, timing edits, tags and exports repeatedly pays startup, load and save costs. A local four-timing/one-tag probe measured 9.7 seconds for five separate calls versus 2.1 seconds for one MCP batch with identical resulting metadata. This is one small metadata sample, not an end-to-end art speedup claim.
+
+1. Plan the key poses, layers, approved palette, complete timing list and tag ranges before the edit batch. Create all frames before finalizing tags.
+2. Prefer existing bulk/range tools such as `propagate_cels`, `remap_colors_in_cel_range` and `set_frame_duration_all`. Reuse static cels and existing artwork without reading/redrawing identical pixels frame by frame.
+3. When no dedicated batch tool covers the combined operation, use `run_lua_script` through this MCP for a bounded native Aseprite batch: validate every target and input before mutating, use `app.activeSprite` and `app.transaction`, apply related edits, save once, and return a compact result. Keep `allow_unsafe_lua=False`; ordinary batching needs no host APIs or disabled validation. Keep pixel authoring inside Aseprite through MCP.
+4. Serialize writes to each sprite. Concurrent edits would load/save competing copies. Split large batches at meaningful visual checkpoints rather than making an enormous unreviewed change.
+5. Review silhouette/key action/lifecycle passes with `view_sprite` contact sheets (at most 16 frames per call). Check changed geometry and palette; do not repeat metadata, bounds and palette reads after every cel or timing correction. Different visible color counts between poses are not automatically palette drift.
+6. Once the pass is ready, export the PNG/JSON and required clip previews, grouping exports where supported, then verify the package. Reuse that export metadata/audit across checks. Repeat verification for an actual change, failure or unresolved concern.
+
+Batching reduces command overhead; it does not replace drawing key poses, visual inspection, palette/bounds checks or meaningful integration tests. Keep handoffs concise and distinguish source art, integration and runtime validation. Structured multi-cel edit and package-export tools would be useful future additions; they are not currently exposed tool names.
 
 | Category | Tools | Description |
 |----------|------:|-------------|
@@ -377,18 +391,19 @@ Tool failures use MCP error results (`isError: true`) for the server's establish
 
 | Tool | Description |
 |------|-------------|
-| `run_lua_script` | Execute Aseprite Lua in batch mode ([API docs](https://www.aseprite.org/api/)). The last resort, for what no dedicated tool covers: one script can batch many operations into a single Aseprite launch. A best-effort text check blocks common host-level Lua APIs, but is not a sandbox and can be bypassed. Lua runs with the host user's privileges; use OS-level isolation for untrusted scripts. Execution is time-limited and output is capped. Set `allow_unsafe_lua=True` only for trusted scripts that need host access. |
+| `run_lua_script` | Execute Aseprite Lua in batch mode ([API docs](https://www.aseprite.org/api/)). Preferred for related multi-operation batches without a dedicated batch tool, or operations no dedicated tool covers: validate targets, use a transaction, save once, and keep visual checkpoints. Single edits should still use the focused tools. A best-effort text check blocks common host-level Lua APIs, but is not a sandbox and can be bypassed. Lua runs with the host user's privileges; use OS-level isolation for untrusted scripts. Execution is time-limited and output is capped. Set `allow_unsafe_lua=True` only for trusted scripts that need host access. |
 
 Lua defaults can be adjusted with `ASEPRITE_MCP_MAX_LUA_BYTES` (65536), `ASEPRITE_MCP_LUA_TIMEOUT_SECONDS` (120), and `ASEPRITE_MCP_MAX_OUTPUT_BYTES` (1048576). The per-call script-size limit can lower, but not raise, the server-configured maximum.
 
 ## Recommended Workflow for LLMs
 
-1. **Plan the palette first**: `generate_color_ramp` for each material (skin, armor, blade), or `apply_palette_preset` for a retro look.
-2. **Build in layers**: background / body / equipment / effects, so parts can be animated and edited independently.
-3. **Draw coarse to fine**: silhouette with `draw_rectangle_at` / `draw_ellipse_at` / `fill_area_at`, then refine with `draw_rows`.
-4. **Look at your work**: `view_sprite` after every pass (`region` to zoom in), fix, repeat. Use `get_color_stats` to keep the palette tight and `lint_sprite` to catch stray and detached pixels.
-5. **Shade with intent**: `adjust_hsl` for shadow layers, `apply_dither_gradient` for blends, `outline_cel` for readability.
-6. **Animate with the cel tools**: `propagate_cels`, then `tween_cel_positions_eased` / `oscillate_cel_positions`; verify with `view_sprite`, `compare_frames` and `get_bounds`; export with `export_animation` or `export_tag`.
+1. **Plan once per pass**: reuse the agreed palette; otherwise build ramps once with `generate_color_ramp` or `apply_palette_preset`. Specify key poses, part boxes, layers and timing together.
+2. **Keep editable parts**: body / equipment / effects on separate layers. Reuse static cels and approved components.
+3. **Draw coarse to fine in batches**: establish silhouette and material planes, then hand-place small details with `draw_rows`. Use one native MCP batch for related multi-cel work when dedicated bulk tools do not cover it.
+4. **Review meaningful checkpoints**: inspect silhouette, key actions and lifecycle poses with `view_sprite`; correct clear defects before continuing. Check changed geometry with `lint_sprite` and palette with `get_color_stats`, without repeating unchanged metadata after every small edit.
+5. **Animate pose to pose**: redraw the moving body/limbs; reserve tweens and offsets for rigid objects or secondary motion. Keep contours and shading deliberate; avoid dithering/antialiasing on small sprites.
+6. **Finalize as a package**: create all frames before final tags, apply timing/tag lists together, then export PNG/JSON and required clip previews. Run one appropriate final audit/verification pass; repeat for a material change or failure.
+7. **Keep the process lean**: serialize writes to each sprite, preserve recoverable sources, keep handoffs concise, and report art authoring, integration and runtime validation separately.
 
 ## Optional: Docker
 

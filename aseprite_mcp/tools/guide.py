@@ -20,12 +20,12 @@ async def animation_workflow_guide(use_case: str = "character") -> str:
             "Add anticipation before big moves (lean back before a strike, crouch before a jump).",
             "Squash on impact, stretch on fast motion, and keep the overall volume about the same. Soft bodies (slimes, jelly) deform much more, 30-50% of their size, and change shape on every frame in the air, not only on takeoff and landing.",
             "For very fast moves, use one smear frame instead of in-betweens: the weapon or limb colors stretched along the arc, 1 frame only, 50-80 ms.",
-            "Vary timing with set_frame_duration: 80-120 ms for normal frames, 150-250 ms for the anticipation hold, 50-80 ms for the strike.",
-            "get_color_stats on each frame must report the same unique_colors count and the same colors. If one drifts, set_palette with your ramps and run quantize_to_palette.",
+            "Plan the complete timing list, then apply it in one batch: 80-120 ms for normal frames, 150-250 ms for the anticipation hold, 50-80 ms for the strike. Use set_frame_duration for an isolated correction.",
+            "Reuse the approved palette. Check the completed clip for out-of-palette colors in one pass; different visible color counts between poses do not by themselves mean palette drift. Do not rebuild ramps or quantize after every frame.",
             "Outlines: one dark color is safest under 32 px. On larger sprites, selective outlining uses a darker outline where the body is in shadow and a lighter one where it is lit, but the outline must always be darker than the fill it borders and than the background.",
             "Idle and walk loops must close: the last frame flows into frame 1. Use set_tag direction pingpong for breathing.",
             "Use tween_cel_positions, offset_cel_positions or oscillate_cel_positions only for rigid objects and secondary motion (bobbing, breathing, hair, capes), never as the main animation.",
-            "Tag the range with set_tag, then inspect it with view_sprite (frames=\"1-8\"); an animated GIF cannot be inspected. Use export_animation (scale, background) or export_tag as GIF only for the final deliverable.",
+            "Create all frames before final tags, then apply the complete timing/tag plan together. Inspect key poses with view_sprite (frames=\"1-8\"); use export_animation or export_tag for the finished preview rather than repeated intermediate exports.",
             "Run audit_animation to catch missing cels and layer problems.",
             "Example, a 4-frame sword slash: 1) windup, body leans back with the sword behind the head, 180 ms; 2) strike, sword swept forward as a smear arc, 60 ms; 3) extension, arm and sword fully forward, torso turned, 100 ms; 4) recovery, sword low, weight settling, 120 ms.",
         ]
@@ -48,7 +48,7 @@ async def animation_workflow_guide(use_case: str = "character") -> str:
             "Animate only the moving layers (clouds, birds, water). Tweens and offsets suit these well.",
             "Loops must line up: the last frame should flow into the first. Check with render_onion_skin.",
             "Copy reusable assets across scenes with copy_layers_between_sprites.",
-            "Tag loops and export GIFs to check pacing.",
+            "Inspect key loop poses with view_sprite; export a GIF for pacing review once the pass is ready.",
             "Run audit_animation or animation_sanitize to validate layer coverage and overlaps.",
         ]
     else:
@@ -58,10 +58,14 @@ async def animation_workflow_guide(use_case: str = "character") -> str:
             "Use layer-targeted tools (*_at) to avoid active-cel drift.",
             "Propagate static layers across the frame range.",
             "Vary frame durations: hold important frames longer.",
-            "Use tags for loop ranges and export previews early.",
+            "Finalize tags after frame creation; inspect key poses with view_sprite before exporting the finished loop previews.",
             "Run audit_animation or animation_sanitize to validate layer coverage and overlaps.",
         ]
 
+    bullets.extend([
+        "Batch related cel edits, timings and tags per sprite/art pass. Prefer dedicated range tools; when no dedicated batch tool covers the combined task, use one bounded run_lua_script through MCP with app.transaction and one save. Keep allow_unsafe_lua=False.",
+        "Serialize writes to the same sprite. Reuse static cels and palettes; review meaningful key-pose passes, then do one final package audit/export. Repeat checks for a material change, failure or unresolved concern, not for every small edit.",
+    ])
     lines = [header, f"Use case: {use_case}"]
     lines.extend([f"- {b}" for b in bullets])
     return "\n".join(lines)

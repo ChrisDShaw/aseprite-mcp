@@ -55,23 +55,38 @@ forms and draw_rows for details: rows of characters plus a colour legend, like A
 animals and handles under ~12 px are drawn pixel by pixel with draw_rows, never built from shapes. \
 Clean edges: equal steps on straight diagonals (1-1-1, 2-2-2), gradual steps on curves (1,2,3 not 1,3,1), \
 no L-shaped doubles on 1 px lines, no lone pixels.
-3. Palette before color: one generate_color_ramp (steps=3-4) per material, 8-16 colors in total. \
-Neighbouring materials must differ in lightness, not just hue.
+3. Reuse an agreed palette. Otherwise build it once before coloring: generate_color_ramp (steps=3-4) \
+per material, 8-16 colors in total. Neighbouring materials must differ in lightness, not just hue.
 4. Flats, then shade from one light (top-left): highlight on the lit side, shadow on the far side and \
 under overhangs (chin, arms). Pillow shading (light center, dark ring at the edge) is wrong. \
 No dithering or anti-aliasing on sprites under 32 px.
 5. Outline in one dark color (darkest ramp step or near-black), never lighter than the fill \
 (selective outlines only on larger sprites). outline_cel adds 1 px outside the shape (region= for one object).
-6. After every pass: view_sprite (region="x,y,w,h" to zoom into a detail), get_color_stats to catch \
-stray colors, and lint_sprite for detached parts and stray pixels by coordinate. Fix before going on. \
-If it does not read, change the shape, not the details.
+6. Review meaningful art passes with view_sprite (region="x,y,w,h" for details; up to 16 key frames \
+per contact sheet). Use lint_sprite for changed geometry and get_color_stats for palette checks, \
+then verify the finished package. Do not repeat metadata, palette or bounds reads after every \
+cel/timing edit; repeat checks when a change or failure warrants them. If it does not read, change \
+the shape, not the details.
 7. Objects sit fully on their surfaces, away from edges, and parts stay attached: a handle touches its \
 mug, leaves grow from their pot.
 
-Reach for these before writing Lua: draw_rows / read_rows (pixels as text), draw_text (numbers, labels), \
-replace_color / remap_colors_in_cel_range (hit flashes, recolours), export_animation / export_tag (GIF \
-previews, scaled, on a background), compare_frames and get_bounds (did a part move? where is it?). \
-run_lua_script is the last resort.
+Batch related work by sprite and art pass. Each command starts a fresh batch-mode Aseprite process, \
+so avoid one call per cel, duration or tag for a whole animation. Prefer dedicated range/bulk tools \
+(propagate_cels, remap_colors_in_cel_range, set_frame_duration_all). Use a dedicated tool for a small \
+edit or inspection. When no dedicated batch tool covers the combined operation, prefer one bounded \
+run_lua_script batch through this MCP: use app.activeSprite, validate inputs and frame/layer targets, \
+apply the planned cel edits/timings/tags in app.transaction, save once, and print a compact result. \
+Keep allow_unsafe_lua=False; batching does not require host APIs or disabling validation. Keep pixel \
+authoring inside Aseprite through MCP rather than external bitmap-generation scripts. Serialize writes \
+to the same sprite; parallel calls would load/save competing copies. Split large batches at visual \
+review checkpoints and preserve a recoverable source before a substantial edit.
+
+Create all frames before finalizing tags; set complete timing lists and tags together. Reuse approved \
+palettes and static cels. Prefer native range copies/recolours over repeated read_rows/redraw cycles \
+for identical artwork. Export PNG/JSON and clip previews once the pass is ready, grouping exports with export_spritesheet/export_animation/export_tag \
+where supported. A single package audit/metadata report can serve several checks; keep key-pose \
+visual review and meaningful final verification. Use read_rows/draw_rows for precise pixels, \
+draw_text for labels, and compare_frames/get_bounds for a specific motion question.
 
 Animate pose to pose: redraw each key pose (anticipation, action, follow-through) on its own frame, \
 with the whole body involved and the feet on one ground line unless airborne. copy_frame, \
